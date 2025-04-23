@@ -18,7 +18,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import io.flutter.plugin.common.PluginRegistry.Registrar
 
 
 class FlutterSmsPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
@@ -59,17 +58,6 @@ class FlutterSmsPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
     mChannel.setMethodCallHandler(null)
   }
 
-  // V1 embedding entry point. This is deprecated and will be removed in a future Flutter
-  // release but we leave it here in case someone's app does not utilize the V2 embedding yet.
-  companion object {
-    @JvmStatic
-    fun registerWith(registrar: Registrar) {
-      val inst = FlutterSmsPlugin()
-      inst.activity = registrar.activity()
-      inst.setupCallbackChannels(registrar.messenger())
-    }
-  }
-
   override fun onMethodCall(call: MethodCall, result: Result) {
     when (call.method) {
         "sendSMS" -> {
@@ -92,11 +80,12 @@ class FlutterSmsPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
 
   @TargetApi(Build.VERSION_CODES.ECLAIR)
   private fun canSendSMS(): Boolean {
-    if (!activity!!.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY))
+    val currentActivity = activity ?: return false
+    if (!currentActivity.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY))
       return false
     val intent = Intent(Intent.ACTION_SENDTO)
     intent.data = Uri.parse("smsto:")
-    val activityInfo = intent.resolveActivityInfo(activity!!.packageManager, intent.flags.toInt())
+    val activityInfo = intent.resolveActivityInfo(currentActivity.packageManager, intent.flags.toInt())
     return !(activityInfo == null || !activityInfo.exported)
   }
 
@@ -129,11 +118,15 @@ class FlutterSmsPlugin: FlutterPlugin, MethodCallHandler, ActivityAware {
   }
 
   private fun sendSMSDialog(result: Result, phones: String, message: String) {
+    val currentActivity = activity ?: run {
+        result.error("no_activity", "Plugin is not attached to an activity.", null)
+        return
+    }
     val intent = Intent(Intent.ACTION_SENDTO)
     intent.data = Uri.parse("smsto:$phones")
     intent.putExtra("sms_body", message)
     intent.putExtra(Intent.EXTRA_TEXT, message)
-    activity?.startActivityForResult(intent, REQUEST_CODE_SEND_SMS)
+    currentActivity.startActivityForResult(intent, REQUEST_CODE_SEND_SMS)
     result.success("SMS Sent!")
   }
 }
